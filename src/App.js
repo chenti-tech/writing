@@ -718,73 +718,83 @@ export default function SeatAllocationSystem() {
     }
   }, []);
 
-  useEffect(() => {
-    const initApp = async () => {
-      if (!auth || !db) return;
-      try {
-        // We try to restore a session if exists, otherwise sign in anon
-        if (!auth.currentUser) {
+ useEffect(() => {
+  const initApp = async () => {
+    if (!auth || !db) return;
+
+    // ✅ 先處理登入：優先 custom token，失敗就匿名
+    try {
+      if (!auth.currentUser) {
+        const token =
+          typeof window.__initial_auth_token !== "undefined"
+            ? window.__initial_auth_token
+            : null;
+
+        if (token) {
+          await signInWithCustomToken(auth, token);
+        } else {
           await signInAnonymously(auth);
         }
-      } catch (error) {
-        console.error("Auth init:", error);
       }
-
-      try {
-        const configDoc = await getDoc(
-          doc(
-            db,
-            "artifacts",
-            appId,
-            "public",
-            "data",
-            "system_settings",
-            "config"
-          )
-        );
-        if (configDoc.exists()) {
-          const data = configDoc.data();
-          setSystemConfig({
-            classTypes: data.classTypes || DEFAULT_CLASS_TYPES,
-            years: data.years || DEFAULT_YEARS,
-            semesters: data.semesters || DEFAULT_SEMESTERS,
-            classroomBindings:
-              data.classroomBindings || DEFAULT_CLASSROOM_BINDINGS,
-          });
-          if (data.classTypes && data.classTypes.length > 0) {
-            setFormData((prev) => ({ ...prev, classType: data.classTypes[0] }));
-            setAdminFilter((prev) => ({
-              ...prev,
-              classType: data.classTypes[0],
-            }));
-            setSearchClass(data.classTypes[0]);
-          }
-        }
-      } catch (e) {
-        // Suppress error display to user for config issues, use defaults
-        console.warn("Config load skipped, using defaults");
-      } finally {
-        setConfigLoading(false);
-      }
-    };
-
-    initApp();
-
-    if (auth) {
-      const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-        setUser(currentUser);
-        // Security Check: If email matches, grant admin access
-        if (currentUser && currentUser.email === "chenti.chinese@gmail.com") {
-          setIsAdmin(true);
-        } else {
-          setIsAdmin(false);
-          // If we were in admin view but lost admin rights, kick to home
-          if (view.startsWith("admin")) setView("home");
-        }
-      });
-      return () => unsubscribe();
+    } catch (error) {
+      console.error("Firebase auth init failed:", error);
+      // ✅ 避免白畫面：至少回到首頁
+      setView("home");
     }
-  }, []);
+
+    // ✅ 再載入 config（你原本的邏輯 그대로）
+    try {
+      const configDoc = await getDoc(
+        doc(
+          db,
+          "artifacts",
+          appId,
+          "public",
+          "data",
+          "system_settings",
+          "config"
+        )
+      );
+      if (configDoc.exists()) {
+        const data = configDoc.data();
+        setSystemConfig({
+          classTypes: data.classTypes || DEFAULT_CLASS_TYPES,
+          years: data.years || DEFAULT_YEARS,
+          semesters: data.semesters || DEFAULT_SEMESTERS,
+          classroomBindings:
+            data.classroomBindings || DEFAULT_CLASSROOM_BINDINGS,
+        });
+        if (data.classTypes && data.classTypes.length > 0) {
+          setFormData((prev) => ({ ...prev, classType: data.classTypes[0] }));
+          setAdminFilter((prev) => ({
+            ...prev,
+            classType: data.classTypes[0],
+          }));
+          setSearchClass(data.classTypes[0]);
+        }
+      }
+    } catch (e) {
+      console.warn("Config load skipped, using defaults");
+    } finally {
+      setConfigLoading(false);
+    }
+  };
+
+  initApp();
+
+  if (auth) {
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      if (currentUser && currentUser.email === "chenti.chinese@gmail.com") {
+        setIsAdmin(true);
+      } else {
+        setIsAdmin(false);
+        if (view.startsWith("admin")) setView("home");
+      }
+    });
+    return () => unsubscribe();
+  }
+}, []);
 
   // Sync classroom with classType based on bindings
   useEffect(() => {
