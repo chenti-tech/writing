@@ -31,3 +31,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/deploy-pages@v4
+       with:
+         node-version: 20
+         cache: 'npm'
+
